@@ -44,55 +44,33 @@ private:
     static constexpr const char *BATTERY_SERVICE_UUID = "180F";
     static constexpr const char *BS_LEVEL_CHARACTERISTICS_UUID = "2A19";
 
-    char name[16];
+    String name;
     int batteryLevel;
-    float ambientTemperature;
+    float roomTemperature;
+    bool dataReceived;
 
     uint8_t pinCode[4], encryptionKey[16];
 
     BLEClient *pClient;
     BLEAddress *pAddress;
 
-    void onClientConnected(BLEClient *pclient);
-    void onClientDisconnected(BLEClient *pclient);
     void swapEndianness(uint8_t *data, size_t length);
     bool decrypt(uint8_t *data, size_t length);
-
-    class ClientCallbacks : public BLEClientCallbacks
-    {
-    private:
-        DanfossECO2 *pDanfossClient;
-
-    public:
-        ClientCallbacks(DanfossECO2 *pDanfossClient)
-        {
-            this->pDanfossClient = pDanfossClient;
-        }
-
-        void onConnect(BLEClient *pclient)
-        {
-            pDanfossClient->onClientConnected(pclient);
-        }
-
-        void onDisconnect(BLEClient *pclient)
-        {
-            pDanfossClient->onClientDisconnected(pclient);
-        }
-    };
-    ClientCallbacks *pClientCallbacks;
 
 public:
     DanfossECO2(const char *macAddress, const uint8_t *keyData, const uint8_t *pinCode = nullptr);
     ~DanfossECO2();
 
-    const char *getName();
+    String getName();
     int getBatteryLevel();
-    float getAmbientTemperature();
+    float getRoomTemperature();
 
     void connect();
     void disconnect();
 
     void refreshValues();
+
+    String toString();
 };
 
 #endif
