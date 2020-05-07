@@ -1,0 +1,23 @@
+{
+    "name": "DanfossECO2",
+    "keywords": "eTRV, BLE, Danfoss, thermostatic, valve, remote, ESP32",
+    "description": "ESP32 (Arduino) library providing connectivity to Danfoss ECO2 eTRV devices using Bluetooth Low Energy radio.",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/jarikp/ESP32_DanfossECO2.git"
+    },
+    "authors": {
+        "name": "Jarik Poplavski",
+        "email": "jarik@poplavski.net",
+        "maintainer": true
+    },
+	"dependencies": [
+		{
+		  "name": "xxtea-lib",
+		  "authors": "Abhijit Bose"
+		}
+	],
+    "version": "1.0.0",
+    "frameworks": "arduino",
+    "platforms": "espressif32"
+}
