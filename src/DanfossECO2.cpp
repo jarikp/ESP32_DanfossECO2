@@ -28,19 +28,16 @@
 */
 
 #include <Arduino.h>
-#include <xxtea-lib.h>
 #include <BLEDevice.h>
+#include <xxtea-lib.h>
 #include "DanfossECO2.h"
 
-DanfossECO2::DanfossECO2(const char *macAddress, const uint8_t *keyData, const uint8_t *pinCode)
+DanfossECO2::DanfossECO2(const char *macAddress)
 {
-    memcpy(encryptionKey, keyData, 16);
-
     pAddress = new BLEAddress(std::string(macAddress));
     pClient = BLEDevice::createClient();
-    roomTemperature = 0;
-    batteryLevel = 0;
-    name = "";
+    resetConnectionState();
+    usePin(0000);
 }
 
 DanfossECO2::~DanfossECO2()
@@ -65,65 +62,90 @@ float DanfossECO2::getRoomTemperature()
     return roomTemperature;
 }
 
-void DanfossECO2::refreshValues()
+const uint8_t *DanfossECO2::getKey()
 {
-    BLERemoteService *pMainService = pClient->getService(this->MAIN_SERVICE_UUID);
-
-    BLERemoteCharacteristic *pNameCharacteristic = pMainService->getCharacteristic(this->MS_NAME_CHARACTERISTICS_UUID);
-    if (pNameCharacteristic != nullptr && pNameCharacteristic->canRead())
-    {
-        std::string nameEncryted = pNameCharacteristic->readValue();
-        uint8_t data[nameEncryted.length()];
-        memcpy(data, nameEncryted.c_str(), nameEncryted.length());
-        decrypt(data, nameEncryted.length());
-        name = String((char *)data);
-    }
-
-    BLERemoteCharacteristic *pTemperatureCharacteristic = pMainService->getCharacteristic(this->MS_TEMP_CHARACTERISTICS_UUID);
-    if (pTemperatureCharacteristic != nullptr && pTemperatureCharacteristic->canRead())
-    {
-        std::string tempEncryted = pTemperatureCharacteristic->readValue();
-        uint8_t data[tempEncryted.length()];
-        memcpy(data, tempEncryted.c_str(), tempEncryted.length());
-        decrypt(data, tempEncryted.length());
-        roomTemperature = ((float)data[1]) / 2.0F;
-    }
-
-    BLERemoteService *pBatteryService = pClient->getService(this->BATTERY_SERVICE_UUID);
-
-    BLERemoteCharacteristic *pBatteryLevelCharacteristic = pBatteryService->getCharacteristic(this->BS_LEVEL_CHARACTERISTICS_UUID);
-    if (pBatteryLevelCharacteristic != nullptr && pBatteryLevelCharacteristic->canRead())
-    {
-        batteryLevel = pBatteryLevelCharacteristic->readUInt8();
-    }
-
-    dataReceived = true;
+    return encryptionKey;
 }
 
-void DanfossECO2::connect()
+bool DanfossECO2::isConnected()
 {
-    pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
-    BLERemoteService *pMainService = pClient->getService(this->MAIN_SERVICE_UUID);
+    return isConnectedWithDataAccess;
+}
 
-    BLERemoteCharacteristic *pPinCharacteristic = pMainService->getCharacteristic(this->MS_PIN_CHARACTERISTICS_UUID);
-    if (pPinCharacteristic != nullptr && pPinCharacteristic->canWrite())
+void DanfossECO2::usePin(int pin)
+{
+    pinCode[0] = 0;
+    pinCode[1] = 0;
+    pinCode[2] = 0;
+    pinCode[3] = 0;
+}
+
+bool DanfossECO2::connectWithKey(const uint8_t *key)
+{
+    memcpy(encryptionKey, key, 16);
+
+    if (!pClient->isConnected())
+        pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
+
+    if (setCharacteristicValue(MAIN_SERVICE_UUID, MS_PIN_CHARACTERISTICS_UUID, pinCode, 4))
     {
-        pPinCharacteristic->writeValue(pinCode, 4, true);
+        return refreshValues();
     }
 
-    this->refreshValues();
+    return false;
+}
+
+bool DanfossECO2::refreshValues()
+{
+    int valueLength;
+    uint8_t valueBuffer[20];
+
+    valueLength = getCharacteristicValue(MAIN_SERVICE_UUID, MS_NAME_CHARACTERISTICS_UUID, valueBuffer);
+    if (valueLength > 0 && decrypt(valueBuffer, valueLength))
+    {
+        name = String((char *)valueBuffer);
+        memset(valueBuffer, 0, sizeof(valueBuffer));
+    }
+    else
+    {
+        resetConnectionState();
+        return false;
+    }
+
+    valueLength = getCharacteristicValue(MAIN_SERVICE_UUID, MS_TEMP_CHARACTERISTICS_UUID, valueBuffer);
+    if (valueLength > 0 && decrypt(valueBuffer, valueLength))
+    {
+        roomTemperature = ((float)valueBuffer[1]) / 2.0F;
+        memset(valueBuffer, 0, sizeof(valueBuffer));
+    }
+    else
+    {
+        resetConnectionState();
+        return false;
+    }
+
+    valueLength = getCharacteristicValue(BATTERY_SERVICE_UUID, BS_LEVEL_CHARACTERISTICS_UUID, valueBuffer);
+    if (valueLength > 0)
+    {
+        batteryLevel = ((uint8_t)valueBuffer[0]);
+        memset(valueBuffer, 0, sizeof(valueBuffer));
+    }
+    else
+    {
+        resetConnectionState();
+        return false;
+    }
+
+    isConnectedWithDataAccess = true;
+    return true;
 }
 
 void DanfossECO2::disconnect()
 {
+    resetConnectionState();
     pClient->disconnect();
     while (pClient->isConnected())
         delay(100);
-
-    dataReceived = false;
-    roomTemperature = 0;
-    batteryLevel = 0;
-    name = "";
 }
 
 String DanfossECO2::toString()
@@ -133,12 +155,53 @@ String DanfossECO2::toString()
         sprintf(output, "Device '%s' is disconnected.", pAddress->toString().c_str());
     else
     {
-        if (!dataReceived)
-            sprintf(output, "Device '%s' is connected, but no data available. Please check PIN code and ecryption key.", pAddress->toString().c_str());
+        if (!isConnectedWithDataAccess)
+            sprintf(output, "Device '%s' is reacheable, but no data available. Please check PIN code and ecryption key.", pAddress->toString().c_str());
         else
             sprintf(output, "Device '%s (%s)' is reporting room temperature %.1fC and remaining battery level is %u%%.", name.c_str(), pAddress->toString().c_str(), roomTemperature, batteryLevel);
     }
     return output;
+}
+
+int DanfossECO2::getCharacteristicValue(const char *service_uuid, const char *characteristic_uuid, uint8_t *buffer)
+{
+    if (pClient->isConnected())
+    {
+        BLERemoteService *pService = pClient->getService(service_uuid);
+        if (pService != nullptr)
+        {
+            BLERemoteCharacteristic *pCharacteristic = pService->getCharacteristic(characteristic_uuid);
+            if (pCharacteristic != nullptr && pCharacteristic->canRead())
+            {
+                std::string valueBytes = pCharacteristic->readValue();
+                int valueLength = valueBytes.length();
+                if (valueLength > 0)
+                {
+                    memcpy(buffer, valueBytes.c_str(), valueLength);
+                    return valueLength;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+bool DanfossECO2::setCharacteristicValue(const char *service_uuid, const char *characteristic_uuid, uint8_t *buffer, size_t length)
+{
+    if (pClient->isConnected())
+    {
+        BLERemoteService *pService = pClient->getService(service_uuid);
+        if (pService != nullptr)
+        {
+            BLERemoteCharacteristic *pCharacteristic = pService->getCharacteristic(characteristic_uuid);
+            if (pCharacteristic != nullptr && pCharacteristic->canWrite())
+            {
+                pCharacteristic->writeValue(buffer, length, true);
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool DanfossECO2::decrypt(uint8_t *data, size_t length)
@@ -164,4 +227,12 @@ void DanfossECO2::swapEndianness(uint8_t *data, size_t length)
         buffer[i] = data[((i / 4) * 4) + (3 - (i % 4))];
     }
     memcpy(data, buffer, length);
+}
+
+void DanfossECO2::resetConnectionState()
+{
+    isConnectedWithDataAccess = false;
+    roomTemperature = 0;
+    batteryLevel = 0;
+    name = "";
 }
