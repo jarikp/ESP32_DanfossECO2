@@ -52,5 +52,5 @@ void loop()
         Serial.println(eTRV->toString());
     }
 
-    delay(10000);
+    delay(30000);
 }

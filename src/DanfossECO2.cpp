@@ -74,24 +74,42 @@ bool DanfossECO2::isConnected()
 
 void DanfossECO2::usePin(int pin)
 {
-    pinCode[0] = 0;
-    pinCode[1] = 0;
-    pinCode[2] = 0;
-    pinCode[3] = 0;
+    if (pin < 0 || pin > 9999)
+        pin = 0;
+    pinCode[0] = pin / 1000;
+    pinCode[1] = (pin / 100) % 10;
+    pinCode[2] = (pin / 10) % 10;
+    pinCode[3] = pin % 10;
 }
 
 bool DanfossECO2::connectWithKey(const uint8_t *key)
 {
-    memcpy(encryptionKey, key, 16);
+    memcpy(encryptionKey, key, sizeof(encryptionKey));
 
     if (!pClient->isConnected())
         pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
 
-    if (setCharacteristicValue(MAIN_SERVICE_UUID, MS_PIN_CHARACTERISTICS_UUID, pinCode, 4))
-    {
+    if (setCharacteristicValue(MAIN_SERVICE_UUID, MS_PIN_CHARACTERISTICS_UUID, pinCode, sizeof(pinCode)))
         return refreshValues();
-    }
 
+    if (!isConnectedWithDataAccess)
+        disconnect();
+
+    return false;
+}
+
+bool DanfossECO2::connectWithPairing()
+{
+    memset(encryptionKey, 0, sizeof(encryptionKey));
+    uint8_t buffer[16];
+
+    if (!pClient->isConnected())
+        pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
+
+    if (getCharacteristicValue(MAIN_SERVICE_UUID, MS_KEY_CHARACTERISTICS_UUID, buffer) > 0)
+        return connectWithKey(buffer);
+
+    disconnect();
     return false;
 }
 
@@ -143,9 +161,12 @@ bool DanfossECO2::refreshValues()
 void DanfossECO2::disconnect()
 {
     resetConnectionState();
-    pClient->disconnect();
-    while (pClient->isConnected())
-        delay(100);
+    if (pClient->isConnected())
+    {
+        pClient->disconnect();
+        while (pClient->isConnected())
+            delay(100);
+    }
 }
 
 String DanfossECO2::toString()
@@ -206,7 +227,7 @@ bool DanfossECO2::setCharacteristicValue(const char *service_uuid, const char *c
 
 bool DanfossECO2::decrypt(uint8_t *data, size_t length)
 {
-    if (xxtea_setup_key(encryptionKey, 16) != XXTEA_STATUS_SUCCESS)
+    if (xxtea_setup_key(encryptionKey, sizeof(encryptionKey)) != XXTEA_STATUS_SUCCESS)
         return false;
 
     swapEndianness(data, length);
