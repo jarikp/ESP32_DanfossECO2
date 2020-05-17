@@ -65,6 +65,8 @@ public:
   DanfossECO2(const char *macAddress);
   ~DanfossECO2();
 
+  // Returns MAC address of the device
+  String getAddress();
   // Returns the user specified name, which is stored in the device, requires valid connection.
   String getName();
   // Returns the remaining battery level in percents, requires valid connection.
@@ -75,19 +77,18 @@ public:
   const uint8_t *getKey();
   // Returns true if the connection to the device is successful and data are available.
   bool isConnected();
-
   // Specifies custom PIN code to access device, if the default PIN (0000) has been changed. Only values up to 9999 can be used.
   void usePin(int pin);
-  // Connects to devices using the provided 16-byte encryption key. Returns false, if the connection did not succeeded.
-  bool connectWithKey(const uint8_t *key);
-  // Connects to devices using the pairing, eg. when the device can be put in pairing mode. Returns false, if the connection did not succeeded.
-  bool connectWithPairing();
+  // Specifies 16-byte encryption key to access the device, the key is not validated until next connection.
+  void useKey(const uint8_t *key);
+  // Obtains the encryption key and establishes the connection when the device is in pairing mode. Returns false, if the connection did not succeeded.
+  bool pair();
+  // Connects to devices. Returns false, if the connection did not succeeded, due to incorrect PIN or encryption key.
+  bool connect();
   // Ends the current connection and clears all values received.
   void disconnect();
-
   // Reloads the data from the device (e.g. temperature, battery level etc). Requires
   bool refreshValues();
-
   // Returns a string representing the current state of the connection and eTRV device.
   String toString();
 };

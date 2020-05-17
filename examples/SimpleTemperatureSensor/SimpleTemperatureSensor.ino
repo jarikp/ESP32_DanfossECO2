@@ -35,13 +35,14 @@ void setup()
 
     // PLEASE PROVIDE CORRECT PIN CODE (IF IT'S SET)
     eTRV->usePin(0000);
+    eTRV->useKey(secretKey);
 
     Serial.println("Starting DanfossECO2 temperature monitor loop, reading data every 10 second...");
 }
 
 void loop()
 {
-    if (eTRV->connectWithKey(secretKey))
+    if (eTRV->connect())
     {
         Serial.println(eTRV->toString());
         eTRV->disconnect();

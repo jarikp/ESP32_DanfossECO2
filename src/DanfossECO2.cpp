@@ -47,6 +47,11 @@ DanfossECO2::~DanfossECO2()
     delete pAddress;
 }
 
+String DanfossECO2::getAddress()
+{
+    return pAddress->toString().c_str();
+}
+
 String DanfossECO2::getName()
 {
     return name;
@@ -82,10 +87,30 @@ void DanfossECO2::usePin(int pin)
     pinCode[3] = pin % 10;
 }
 
-bool DanfossECO2::connectWithKey(const uint8_t *key)
+void DanfossECO2::useKey(const uint8_t *key)
 {
     memcpy(encryptionKey, key, sizeof(encryptionKey));
+}
 
+bool DanfossECO2::pair()
+{
+    memset(encryptionKey, 0, sizeof(encryptionKey));
+    uint8_t buffer[16];
+
+    if (!pClient->isConnected())
+        pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
+
+    if (getCharacteristicValue(MAIN_SERVICE_UUID, MS_KEY_CHARACTERISTICS_UUID, buffer) > 0){
+        useKey(buffer);
+        return connect();
+    }
+
+    disconnect();
+    return false;
+}
+
+bool DanfossECO2::connect()
+{
     if (!pClient->isConnected())
         pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
 
@@ -98,19 +123,15 @@ bool DanfossECO2::connectWithKey(const uint8_t *key)
     return false;
 }
 
-bool DanfossECO2::connectWithPairing()
+void DanfossECO2::disconnect()
 {
-    memset(encryptionKey, 0, sizeof(encryptionKey));
-    uint8_t buffer[16];
-
-    if (!pClient->isConnected())
-        pClient->connect(*pAddress, BLE_ADDR_TYPE_PUBLIC);
-
-    if (getCharacteristicValue(MAIN_SERVICE_UUID, MS_KEY_CHARACTERISTICS_UUID, buffer) > 0)
-        return connectWithKey(buffer);
-
-    disconnect();
-    return false;
+    resetConnectionState();
+    if (pClient->isConnected())
+    {
+        pClient->disconnect();
+        while (pClient->isConnected())
+            delay(100);
+    }
 }
 
 bool DanfossECO2::refreshValues()
@@ -156,17 +177,6 @@ bool DanfossECO2::refreshValues()
 
     isConnectedWithDataAccess = true;
     return true;
-}
-
-void DanfossECO2::disconnect()
-{
-    resetConnectionState();
-    if (pClient->isConnected())
-    {
-        pClient->disconnect();
-        while (pClient->isConnected())
-            delay(100);
-    }
 }
 
 String DanfossECO2::toString()

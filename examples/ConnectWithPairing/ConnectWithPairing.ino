@@ -50,7 +50,7 @@ void loop()
         isConnecting = true;
         Serial.println("Thank you! Now press the button on the eTRV device...");
         delay(5000);
-        if (eTRV->connectWithPairing())
+        if (eTRV->pair())
         {
             Serial.print("Pairing successfull! The key is ");
             for (size_t i = 0; i < 16; i++)
